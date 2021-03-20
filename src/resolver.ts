@@ -15,6 +15,8 @@ import {
 import * as logging from '@grpc/grpc-js/build/src/logging'
 import { LogVerbosity } from '@grpc/grpc-js/build/src/constants'
 
+const defaultRefreshFreq = 1000 * 60 * 30 // 30min
+
 const TRACER_NAME = 'etcd_resolver'
 
 const trace = (text: string) => {
@@ -30,6 +32,7 @@ export const setupEtcdResolver = (etcdClient: Etcd3) => {
 export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
   return class EtcdResolver implements Resolver {
     private watcher: Watcher
+    private timer: ReturnType<typeof setInterval>
     private addresses = new Set<string>()
     private processing: boolean = false
     constructor(
@@ -39,6 +42,10 @@ export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
     ) {
       trace('Resolver constructed for target ' + uriToString(target))
       this.updateResolution()
+      this.timer = setInterval(
+        () => this.updateResolution(),
+        defaultRefreshFreq
+      )
       this.watch()
     }
 
@@ -53,6 +60,10 @@ export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
       trace('Resolver destroy target ' + uriToString(this.target))
       if (this.watcher) {
         this.watcher.cancel()
+      }
+
+      if (this.timer) {
+        clearInterval(this.timer)
       }
     }
 
