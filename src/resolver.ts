@@ -1,5 +1,5 @@
 import { Etcd3, Watcher } from 'etcd3'
-import { ChannelOptions, status } from '@grpc/grpc-js'
+import { ChannelOptions, StatusObject, Metadata } from '@grpc/grpc-js'
 import {
   registerResolver,
   Resolver,
@@ -13,7 +13,7 @@ import {
   uriToString,
 } from '@grpc/grpc-js/build/src/uri-parser'
 import * as logging from '@grpc/grpc-js/build/src/logging'
-import { LogVerbosity } from '@grpc/grpc-js/build/src/constants'
+import { LogVerbosity, Status } from '@grpc/grpc-js/build/src/constants'
 
 const defaultRefreshFreq = 1000 * 60 * 30 // 30min
 
@@ -31,6 +31,8 @@ export const setupEtcdResolver = (etcdClient: Etcd3) => {
 
 export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
   return class EtcdResolver implements Resolver {
+    private defaultResolutionError: StatusObject
+
     private watcher: Watcher
     private timer: ReturnType<typeof setInterval>
     private addresses = new Set<string>()
@@ -38,7 +40,7 @@ export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
     constructor(
       private target: GrpcUri,
       private listener: ResolverListener,
-      channelOptions: ChannelOptions
+      _channelOptions: ChannelOptions // eslint-disable-line
     ) {
       trace('Resolver constructed for target ' + uriToString(target))
       this.updateResolution()
@@ -47,6 +49,14 @@ export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
         defaultRefreshFreq
       )
       this.watch()
+
+      this.defaultResolutionError = {
+        code: Status.UNAVAILABLE,
+        details: `Name resolution failed for target ${uriToString(
+          this.target
+        )}`,
+        metadata: new Metadata(),
+      }
     }
 
     updateResolution() {
@@ -110,9 +120,11 @@ export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
           .getAll()
           .prefix(this.target.path + '/')
           .keys()
+
         this.addresses = new Set(
           keys.map((k) => k.replace(this.target.path + '/', ''))
         )
+
         this.updateResolutionFromAddress()
       } catch (err) {
         trace(
@@ -120,11 +132,8 @@ export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
             this.target
           )}, error: ${err.message}`
         )
-        this.listener.onError({
-          code: status.INTERNAL,
-          details: err.message,
-          metadata: null,
-        })
+
+        this.listener.onError(this.defaultResolutionError)
       } finally {
         this.processing = false
       }
@@ -143,6 +152,7 @@ export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
 
       this.listener.onSuccessfulResolution(
         EtcdResolver.addressToSubchannelAddress(this.addresses),
+        null,
         null,
         null,
         {}
