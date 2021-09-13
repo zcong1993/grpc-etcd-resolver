@@ -1,6 +1,6 @@
 {
   "name": "@zcong/grpc-etcd-resolver",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "etcd resolver for @grpc/grpc-js",
   "main": "./dist/index.js",
   "files": [
