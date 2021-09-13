@@ -63,7 +63,7 @@ export const createEtcdResolver = (etcdClient: Etcd3): ResolverConstructor => {
       trace(
         'Resolution update requested for target ' + uriToString(this.target)
       )
-      this._updateResolution()
+      setImmediate(() => this._updateResolution())
     }
 
     destroy() {
